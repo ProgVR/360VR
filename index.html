@@ -3,31 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>360° Viewer - Client Preview</title>
+    <title>360° Viewer VR</title>
     <style>
-        /* Rendi la visualizzazione a tutto schermo e senza bordi */
-        body { margin: 0; overflow: hidden; background-color: #000; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         canvas { display: block; }
         
-        /* Un piccolo suggerimento visivo che scompare dopo poco */
-        #overlay {
+        /* Pulsante per attivare Giroscopio e Fullscreen */
+        #btn-start {
             position: absolute;
-            bottom: 20px;
+            top: 50%;
             left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-family: sans-serif;
-            background: rgba(0,0,0,0.5);
-            padding: 10px 20px;
-            border-radius: 20px;
-            pointer-events: none;
-            transition: opacity 1s;
+            transform: translate(-50%, -50%);
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(255,255,255,0.3);
         }
     </style>
 </head>
 <body>
 
-    <div id="overlay">Trascina per esplorare</div>
+    <button id="btn-start">Avvia Esperienza 360°</button>
 
     <script type="importmap">
         {
@@ -41,63 +42,72 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
 
-        let camera, scene, renderer, controls;
+        let camera, scene, renderer, controls, deviceControls;
+        let useGiro = false;
+
+        const btn = document.getElementById('btn-start');
+
+        btn.addEventListener('click', function() {
+            // 1. Richiesta Permessi Giroscopio (Obbligatorio per iOS)
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            attivaGiroscopio();
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Per Android o browser che non richiedono permessi espliciti
+                attivaGiroscopio();
+            }
+
+            // 2. Attiva Tutto Schermo (Fullscreen)
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            } else if (document.documentElement.webkitRequestFullscreen) {
+                document.documentElement.webkitRequestFullscreen(); // Per Safari
+            }
+
+            btn.style.display = 'none'; // Nascondi il pulsante
+        });
+
+        function attivaGiroscopio() {
+            deviceControls = new DeviceOrientationControls(camera);
+            useGiro = true;
+        }
 
         init();
         animate();
 
         function init() {
-            // 1. Scena e Camera
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 0, 0.1);
 
-            // 2. Renderer con correzione Colore (sRGB)
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.outputColorSpace = THREE.SRGBColorSpace; 
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
             document.body.appendChild(renderer.domElement);
 
-            // 3. Creazione della Sfera 360
             const geometry = new THREE.SphereGeometry(500, 60, 40);
-            geometry.scale(-1, 1, 1); // Inverte la sfera per vedere l'interno
+            geometry.scale(-1, 1, 1);
 
             const loader = new THREE.TextureLoader();
-            
-            // CARICAMENTO IMMAGINE LOCALE
             loader.load('panorama.jpg', function(texture) {
-                texture.colorSpace = THREE.SRGBColorSpace; // Fix Gamma
-                texture.minFilter = THREE.LinearFilter;
-                
+                texture.colorSpace = THREE.SRGBColorSpace;
                 const material = new THREE.MeshBasicMaterial({ map: texture });
                 const sphere = new THREE.Mesh(geometry, material);
                 scene.add(sphere);
-                
-                // Nasconde il suggerimento dopo 3 secondi dal caricamento
-                setTimeout(() => {
-                    document.getElementById('overlay').style.opacity = '0';
-                }, 3000);
-            }, undefined, function(err) {
-                console.error("Errore nel caricamento di panorama.jpg. Assicurati che il file sia nella stessa cartella dell'HTML.");
             });
 
-            // 4. Controlli Orbit
+            // Controlli mouse/touch standard
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; // Movimento fluido
-            controls.dampingFactor = 0.05;
-            controls.rotateSpeed = -0.5; // Rotazione naturale al trascinamento
-            controls.enablePan = false;   // Impedisce di spostarsi dalla sfera
-            
-            // Auto-rotazione lenta iniziale (molto scenografica per il cliente)
-            controls.autoRotate = true;
-            controls.autoRotateSpeed = 0.5;
-
-            // Ferma l'auto-rotazione appena l'utente tocca lo schermo
-            renderer.domElement.addEventListener('pointerdown', () => {
-                controls.autoRotate = false;
-            });
+            controls.enableDamping = true;
+            controls.rotateSpeed = -0.5;
 
             window.addEventListener('resize', onWindowResize);
         }
@@ -110,7 +120,13 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            controls.update(); 
+            
+            if (useGiro && deviceControls) {
+                deviceControls.update(); // Usa il movimento del telefono
+            } else {
+                controls.update(); // Usa il mouse/touch
+            }
+            
             renderer.render(scene, camera);
         }
     </script>
