@@ -3,90 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 Viewer Ultra-Debug</title>
+    <title>360° VR Experience</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: -apple-system, sans-serif; }
+        canvas { display: block; }
+        
+        /* Interfaccia iniziale */
         #ui {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            background: #000; z-index: 1000; color: white;
+            background: radial-gradient(circle, #222 0%, #000 100%);
+            z-index: 1000; color: white; text-align: center;
         }
+
         button {
-            padding: 20px 40px; font-size: 20px; font-weight: bold;
-            background: #007bff; color: white; border: none; border-radius: 8px;
-            cursor: pointer;
+            padding: 18px 40px; font-size: 18px; font-weight: bold;
+            background: #ffffff; color: #000; border: none; border-radius: 50px;
+            cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            transition: transform 0.2s, background 0.2s;
         }
-        #status { position: absolute; bottom: 20px; width: 100%; text-align: center; color: #666; font-size: 12px; z-index: 2000; }
+
+        button:active { transform: scale(0.95); }
+        
+        #instruction { margin-top: 20px; font-size: 14px; color: #aaa; max-width: 250px; line-height: 1.5; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h1>360° VIEWER</h1>
-        <button id="start-btn">CLICCA PER INIZIARE</button>
-        <p id="loading-msg">In attesa del click...</p>
+        <h1 style="letter-spacing: 2px;">TOUR 360°</h1>
+        <button id="start-btn">AVVIA ESPERIENZA</button>
+        <p id="instruction">Su smartphone, muovi il dispositivo per guardarti intorno dopo aver cliccato.</p>
     </div>
-    <div id="status">Log: Inizializzazione...</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
 
     <script>
-        var camera, scene, renderer, controls, deviceControls, sphere;
-        var log = document.getElementById('status');
-        
-        function updateLog(msg) { log.innerText = "Log: " + msg; console.log(msg); }
+        let camera, scene, renderer, controls, deviceControls;
+        let useGiro = false;
 
+        // Inizializzazione della scena
         function init() {
-            try {
-                scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
-                camera.position.set(0, 0, 0.1);
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1100);
+            camera.position.set(0, 0, 0.1);
 
-                renderer = new THREE.WebGLRenderer({ antialias: true });
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.outputEncoding = THREE.sRGBEncoding;
-                document.body.appendChild(renderer.domElement);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.outputEncoding = THREE.sRGBEncoding; // Colori corretti
+            document.body.appendChild(renderer.domElement);
 
-                var geometry = new THREE.SphereGeometry(500, 60, 40);
-                geometry.scale(-1, 1, 1);
+            // Sfera 360
+            const geometry = new THREE.SphereGeometry(500, 60, 40);
+            geometry.scale(-1, 1, 1); // Inverti per interno
 
-                var loader = new THREE.TextureLoader();
-                // Tenta di caricare la tua immagine, se fallisce usa quella di test di Three.js
-                var imgPath = 'panorama.jpg';
-                
-                loader.load(imgPath, 
-                    function(texture) {
-                        applyTexture(texture, "Tua immagine caricata");
-                    },
-                    undefined,
-                    function(err) {
-                        updateLog("panorama.jpg non trovata, carico immagine di test...");
-                        loader.load('https://threejs.org/examples/textures/2294472375_24a3b8ef46_o.jpg', function(tex) {
-                            applyTexture(tex, "Immagine di TEST caricata");
-                        });
-                    }
-                );
+            const loader = new THREE.TextureLoader();
+            // Prova a caricare panorama.jpg, con fallback su immagine di test
+            loader.load('panorama.jpg', function(texture) {
+                setupScene(texture);
+            }, undefined, function() {
+                console.warn("panorama.jpg non trovata, carico demo...");
+                loader.load('https://threejs.org/examples/textures/2294472375_24a3b8ef46_o.jpg', setupScene);
+            });
 
-                controls = new THREE.OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.rotateSpeed = -0.25;
+            // Controlli Mouse/Touch standard (sempre pronti)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.rotateSpeed = -0.25;
+            controls.enablePan = false;
 
-                window.addEventListener('resize', onWindowResize, false);
-                animate();
-                updateLog("Sistema pronto. Clicca il tasto blu.");
-            } catch(e) {
-                updateLog("Errore critico: " + e.message);
-            }
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
         }
 
-        function applyTexture(texture, msg) {
+        function setupScene(texture) {
             texture.encoding = THREE.sRGBEncoding;
-            var material = new THREE.MeshBasicMaterial({ map: texture });
-            sphere = new THREE.Mesh(new THREE.SphereGeometry(500, 60, 40).scale(-1, 1, 1), material);
-            scene.add(sphere);
-            updateLog(msg);
+            const material = new THREE.MeshBasicMaterial({ map: texture });
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(500, 60, 40).scale(-1, 1, 1), material);
+            scene.add(mesh);
         }
 
         function onWindowResize() {
@@ -97,33 +94,47 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            if (deviceControls) deviceControls.update();
-            else controls.update();
+            
+            // Se siamo su mobile e il giroscopio è attivo, usa quello
+            if (useGiro && deviceControls) {
+                deviceControls.update();
+            } else {
+                controls.update(); // Altrimenti usa mouse/touch
+            }
+            
             renderer.render(scene, camera);
         }
 
+        // Gestione dell'avvio tramite interazione utente
         document.getElementById('start-btn').addEventListener('click', function() {
-            updateLog("Tentativo di avvio...");
             document.getElementById('ui').style.display = 'none';
 
-            // Fullscreen
-            if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+            // Attiva Fullscreen
+            const el = document.documentElement;
+            if (el.requestFullscreen) el.requestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
 
-            // Giroscopio
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(function(res) {
-                    if (res == 'granted') {
-                        deviceControls = new THREE.DeviceOrientationControls(camera);
-                        updateLog("Giroscopio ATTIVO");
-                    }
-                }).catch(function(e) { updateLog("Giroscopio negato"); });
-            } else if (window.DeviceOrientationEvent) {
-                deviceControls = new THREE.DeviceOrientationControls(camera);
-                updateLog("Giroscopio Standard ATTIVO");
+            // Rileva se è un dispositivo mobile
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+            if (isMobile) {
+                // Gestione Giroscopio (iOS richiede permesso)
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission().then(response => {
+                        if (response === 'granted') {
+                            deviceControls = new THREE.DeviceOrientationControls(camera);
+                            useGiro = true;
+                        }
+                    }).catch(e => console.error("Permesso negato"));
+                } else {
+                    // Android
+                    deviceControls = new THREE.DeviceOrientationControls(camera);
+                    useGiro = true;
+                }
             }
         });
 
-        // Avvia inizializzazione subito
+        // Avvio immediato
         init();
     </script>
 </body>
